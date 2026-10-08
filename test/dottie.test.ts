@@ -11,7 +11,7 @@ const base: Event = { type: 'message', channel: 'C12345678', user: 'U123', ts: '
 const idea = 'I think enterprises will struggle to manage permissions across dozens of AI agents. Is this a worthwhile startup problem?';
 function fixture(overrides = {}, reply?: () => Promise<string>) {
   const cfg = { ...config(env), ...overrides }; let now = 0;
-  const calls: ReturnType<Store['get']>[] = []; const posts: { channel: string; thread_ts: string; text: string }[] = [];
+  const calls: ReturnType<Store['get']>[] = []; const posts: { channel: string; thread_ts?: string; text: string }[] = [];
   const handler = new Handler(cfg, 'UBOT', { reply: async history => { calls.push(history); return reply ? reply() : 'Test the buyer and failure cost.'; } }, { chat: { postMessage: async p => { posts.push(p); } } }, new Store(() => now), new Policy(cfg, () => now), () => {});
   return { handler, calls, posts, advance: (ms: number) => { now += ms; } };
 }

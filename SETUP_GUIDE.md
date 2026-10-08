@@ -63,3 +63,47 @@ These steps intentionally send real messages and incur API usage. No live smoke 
 | Build or dependency failure | Confirm Node 22+, run `npm.cmd ci`, then checks; allow outbound HTTPS to npm, Slack and OpenAI as appropriate. |
 
 Never publish logs containing manually added request bodies. The supplied application logs fixed codes without credentials or raw discussions.
+
+## Enable explicit DMs (optional)
+
+This is an extension to the original discussion-only version. It supports one teammate or eligible human members of the approved channel, with a preview and confirmation. Incoming DM conversations are enabled separately below.
+
+1. In Dottie's Slack app, add **`channels:read`** and **`users:read`**, and confirm **`im:write`** and **`chat:write`** are present. Reinstall to Workspace. `im:write` alone is insufficient for channel-wide sends. Update the bot token privately only if Slack changes it.
+2. In Slack open your own profile, choose the three-dot **More** menu and **Copy member ID**. This is a `U...` or `W...` ID, different from the channel's `C...` ID.
+3. Stop Dottie with Ctrl+C. Add the following to your existing `.env`, replacing the requester placeholder with your member ID. Preserve all existing credentials. Authorize additional requesters only deliberately, using comma-separated member IDs.
+
+```dotenv
+DM_ENABLED=true
+DM_ALLOWED_REQUESTERS=REPLACE_WITH_YOUR_SLACK_MEMBER_ID
+DM_MAX_RECIPIENTS=25
+DM_MAX_DAILY_SENDS=100
+```
+
+4. Build and restart:
+
+```powershell
+npm.cmd test
+npm.cmd run check
+npm.cmd run build
+npm.cmd start
+```
+
+5. First test only yourself: in the approved channel send `@Dottie DM @YourOwnName Good morning`, selecting both actual mentions using autocomplete. Dottie should post a preview, without sending a DM.
+6. Inside the preview thread, mention Dottie with the exact code it provides: `@Dottie confirm dm CODE`. Confirm one DM from Dottie, identifying you as requester. It contains your exact supplied message, without channel history. To decline, use `@Dottie cancel dm CODE` in that thread instead.
+7. After the single-recipient test passes and your team expects the messages, send `@Dottie DM everyone Good morning everyone!` in the approved channel. Review the displayed recipient IDs and text. Confirm in the same thread within five minutes to send one individual DM to each listed person. This includes you if eligible, skips bots and external/inactive accounts, and does not DM the entire workspace. Allow time for recipient lookups and paced sends; inspect the completion counts before issuing another request.
+
+`@channel say good morning` does not trigger this feature. The command must begin with `@Dottie DM ...`. DMs remain independent of proactive mode, which should stay OFF. No additional DM event subscription or `im:history` scope is needed for outbound-only messages. Disable with `DM_ENABLED=false` and restart.
+
+If a DM operation fails, check the four scopes and reinstall; check workspace messaging restrictions too. If a batch partially succeeds, do not resend to everyone automatically: some failed requests have uncertain delivery. Preview codes expire or vanish on restart. Large channels exceeding recipient limits are rejected without truncation. The process uses in-memory attempt caps, not cross-machine or persistent quotas.
+
+Slack references: [channel membership and channels:read](https://docs.slack.dev/reference/methods/conversations.members/), [user metadata and users:read](https://docs.slack.dev/reference/methods/users.info/), [opening DMs with im:write](https://docs.slack.dev/reference/methods/conversations.open/).
+
+## Reply to incoming DMs
+
+1. In Slack's app settings add the bot scope **`im:history`**, subscribe to the bot event **`message.im`**, and reinstall to Workspace. Ensure App Home → Messages Tab is enabled and **Allow users to send Slash commands and messages from the messages tab** is checked.
+2. Set `DM_REPLIES_ENABLED=true` in `.env`. By default, only IDs already in `DM_ALLOWED_REQUESTERS` may chat privately. To let additional teammates chat, set `DM_ALLOWED_USERS` to a comma-separated list of all desired member IDs, including yours. This list replaces the default, rather than extending it. It does not authorize those users to send outbound messages to others. Keep `DM_ENABLED` separate; replies can operate even with outbound messaging disabled.
+3. Stop the old process, run `npm.cmd run build`, then `npm.cmd start`. In the current local configuration, replies are already enabled for member `U0C5WPC9KAM`; restart to load them.
+4. Open Dottie's Messages tab and send **Hi** without tagging. Expect one normal DM reply. Send a follow-up and check that it uses the recent private conversation. To test a DM thread, reply inside an existing thread and verify the response stays there. Unrelated channel threads and other people's private chats must not appear in the answer.
+5. Incoming replies use the same daily model-call and concurrency limits as channel discussions. A busy conversation or exhausted budget can be skipped with a local status code. Bot messages are ignored. DM send/confirm/cancel commands must still be issued in the approved public channel, not privately.
+
+If no reply arrives, check the member allowlist, new event/scope installation, Messages tab setting, and that the process was restarted after updating code and `.env`. There is no new Socket Mode listener to configure: Bolt's existing `message` listener handles both channel messages and the `message.im` event payload. Never add D-channel IDs to `ALLOWED_CHANNELS`. See [Slack's message.im documentation](https://docs.slack.dev/reference/events/message.im/).
